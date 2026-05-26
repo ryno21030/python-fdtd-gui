@@ -80,3 +80,5 @@ fdtd_gui/
 ## 라이선스
 
 MIT
+
+Claude Sonnet 4.6을 이용해 작성되었습니다.
