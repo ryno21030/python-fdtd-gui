@@ -81,4 +81,6 @@ fdtd_gui/
 
 MIT
 
+##
+
 Claude Sonnet 4.6을 이용해 작성되었습니다.
