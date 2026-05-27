@@ -1,3 +1,7 @@
+"""
+main.py
+프로그램 실행
+"""
 import sys
 from PyQt6.QtWidgets import QApplication
 from theme import apply as apply_theme
