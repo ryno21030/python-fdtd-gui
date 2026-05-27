@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
 
 # ── 기본 경로 (스크립트 디렉토리 기준) ──────────────────────
+
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_OUTPUT_DIR = os.path.join(_SCRIPT_DIR, "saves")
 
@@ -24,7 +25,7 @@ class GridConfig:
     dy: float = 1.0
     dz: float = 1.0
     T:  float = 120.0
-    dt: float = 0.5 / (3**0.5)       # 0이면 Courant 조건으로 자동 계산
+    dt: float = 0.5 / (3**0.5)
     save_every: int = 5
 
     def auto_dt(self) -> float:
@@ -123,8 +124,6 @@ class MaterialConfig:
         if self.duty < 0 or self.duty > 1:
             errors.append("Sawtooth의 duty는 0과 1 사이여야 합니다.")
             
-        if self.shape not in ("Box", "Sphere", "Sawtooth"):
-            errors.append("shape는 Box, Sphere, Sawtooth 중 하나여야 합니다.")
         return errors
 
     def auto_n(self) -> float:
