@@ -70,7 +70,7 @@ class VisualizePanel(QWidget):
                 colormap_layout.addWidget(QLabel("색상맵:"))
                 self.colormap_combo = QComboBox()
                 self.colormap_combo.addItems([
-                    "coolwarm", "hot", "viridis", "plasma", "cool", "CET-L4", "gray"
+                    "viridis", "plasma","CET-L4",
                 ])
                 self.colormap_combo.currentTextChanged.connect(self.on_colormap_changed)
                 colormap_layout.addWidget(self.colormap_combo)
@@ -152,12 +152,10 @@ class VisualizePanel(QWidget):
                     
                     # 해당 폴더에서 metadata.npz 자동으로 로드
                     self._load_metadata_from_folder(os.path.dirname(path))
-                    
-                    print(f"DEBUG: Data converted to dict, keys = {list(self.data.keys())}")
+                
                     
                     # 첫 번째 필드부터 표시
                     field_name = self.field_combo.currentText()
-                    print(f"DEBUG: Loading field = {field_name}")
                     if field_name in self.data:
                         self.load_field(field_name)
                     else:
@@ -169,28 +167,30 @@ class VisualizePanel(QWidget):
                     traceback.print_exc()
                     self.label_file.setText(error_msg)
         
-        def _apply_overlays(self,meta):
-                """EPS, 검출기, 광원 오버레이 적용"""
+        def _apply_overlays(self, meta):
                 if meta is None:
                         return
-                
-                # EPS 오버레이
-                if "eps_vol" in meta:
-                        eps_slice = meta["eps_vol"][meta["eps_vol"].shape[0] // 2]
-                        self.eps_overlay.setImage(eps_slice, autoLevels=True)
+
+                        # eps_Ez를 대표로 사용 (Ez 필드와 같은 격자)
+                eps_key = next((k for k in ["eps_Ez", "eps_Ex", "eps_Ey"] if k in meta), None)
+                if eps_key:
+                        eps_vol = meta[eps_key]  # shape: (Nx, Ny, Nz-1)
+                        # 현재 선택된 축에 따라 슬라이스
+                        eps_slice = eps_vol[:, eps_vol.shape[1] // 2, :]  # y축 중간 슬라이스
+                        self.eps_overlay.setImage(eps_slice, autoLevels=True, levels=(0.0,1.0))
                         self.eps_overlay.setVisible(True)
                 else:
                         self.eps_overlay.setVisible(False)
-
-                # 광원 위치 표시
+                        
                 if "src_x" in meta and "src_y" in meta and "src_z" in meta and "det_axis" in meta and "det_index" in meta:
                         src_x = meta["src_x"]
                         src_y = meta["src_y"]
                         src_z = meta["src_z"]
-                        det_axis = meta["det_axis"]
-                        det_index = meta["det_index"]
+                        det_axis = str(meta["det_axis"])
+                        det_index = int(meta["det_index"])
 
                         # 광원 위치 표시
+    
                         spots = []
                         for x, y, z in zip(src_x, src_y, src_z):
                                 if det_axis == 'x' and det_index == y:
@@ -212,7 +212,6 @@ class VisualizePanel(QWidget):
                                 meta_npz = np.load(meta_path)
                                 self.metadata = {k: meta_npz[k] for k in meta_npz.files}
                                 meta_npz.close()
-                                print(f"DEBUG: Metadata loaded, keys = {list(self.metadata.keys())}")
                                 self._apply_overlays(self.metadata)
                         except Exception as e:
                                 print(f"DEBUG: Failed to load metadata: {str(e)}")
@@ -237,7 +236,7 @@ class VisualizePanel(QWidget):
         
         def on_field_changed(self):
                 """필드 선택 변경"""
-                if not hasattr(self, 'data'):
+                if self.data is None:
                         return
                 field_name = self.field_combo.currentText()
                 self.load_field(field_name)
@@ -255,6 +254,7 @@ class VisualizePanel(QWidget):
                 self.index +=1
 
                 if self.index >= len(self.frames):
+                        self.index = len(self.frames)-1
                         self.timer.stop()
                         return
                 
@@ -272,7 +272,7 @@ class VisualizePanel(QWidget):
                 if self.frames is None:
                         return
                 
-                frame = self.frames[idx-1]
+                frame = self.frames[idx]
                 
                 # 2D 슬라이스가 필요한 경우 (3D 데이터의 경우 중간 슬라이스)
                 if frame.ndim == 2:
@@ -296,7 +296,7 @@ class VisualizePanel(QWidget):
                 else:
                         image = np.zeros_like(image)
                 
-                self.viewer.setImage(image, autoLevels=False)
+                self.viewer.setImage(image, autoLevels=True)
                 
                 # 색상맵 적용
                 cmap_name = self.colormap_combo.currentText()
