@@ -1,7 +1,7 @@
 """
 panels/detector.py
 검광기(Detector) 설정 패널.
-axis / index / 기록 물리량 체크박스를 제공한다.
+axis / position / 기록 물리량 체크박스를 제공한다.
 """
 from __future__ import annotations
 from PyQt6.QtWidgets import (
@@ -20,13 +20,9 @@ ALL_QUANTITIES = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]
 class DetectorPanel(QWidget):
     def __init__(self, cfg, parent=None):
         super().__init__(parent)
-        self._cfg_list: list[DetectorConfig] = []  # 검광기 여러 개 지원용 리스트
-        # cfg가 SimConfig면 detectors 리스트 사용, DetectorConfig면 단일 항목
+        self._cfg_list: list[DetectorConfig] = []
         if isinstance(cfg, SimConfig):
-            if cfg.detectors:
-                default_cfg = cfg.detectors[0]
-            else:
-                default_cfg = DetectorConfig()
+            default_cfg = cfg.detectors[0] if cfg.detectors else DetectorConfig()
         else:
             default_cfg = cfg if isinstance(cfg, DetectorConfig) else DetectorConfig()
         self._build_ui(default_cfg)
@@ -76,14 +72,14 @@ class DetectorPanel(QWidget):
 
         self._editor_sa = self._build_editor()
         root.addWidget(self._editor_sa, stretch=1)
-    
+
     def _build_editor(self) -> QScrollArea:
         inner = QWidget()
         vl = QVBoxLayout(inner)
         vl.setContentsMargins(24, 20, 24, 20)
         vl.setSpacing(10)
 
-        dummy = DetectorConfig()  # 편집 UI 초기값용 더미 객체
+        dummy = DetectorConfig()
 
         # ── 기본 설정 ──────────────────────────────────────
         vl.addWidget(section_label("검광기 위치"))
@@ -92,16 +88,15 @@ class DetectorPanel(QWidget):
         form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
         form.setSpacing(8)
 
-        self._name  = line_edit(dummy.name)
-        self._axis  = combo(["y", "x", "z"], dummy.axis)
-        self._index = spin(dummy.index, lo=0, hi=9999)
+        self._name     = line_edit(dummy.name)
+        self._axis     = combo(["y", "x", "z"], dummy.axis)
+        self._position = spin(dummy.position, lo=0, hi=9999)  # index → position
 
         form.addRow("이름",          self._name)
         form.addRow("법선 축",       self._axis)
-        form.addRow("격자 인덱스",   self._index)
+        form.addRow("격자 인덱스",   self._position)
         vl.addLayout(form)
 
-        # 인덱스 의미 안내
         self._axis_hint = QLabel()
         self._axis_hint.setStyleSheet("font-size: 13px; color: #6a6a6a;")
         vl.addWidget(self._axis_hint)
@@ -125,7 +120,6 @@ class DetectorPanel(QWidget):
 
         self._checks: dict[str, QCheckBox] = {}
 
-        # E 그룹
         e_box = QGroupBox("E 성분")
         e_box.setStyleSheet(
             "QGroupBox { font-size: 13px; border: 1px solid #555; "
@@ -141,7 +135,6 @@ class DetectorPanel(QWidget):
             self._checks[q] = cb
             e_vl.addWidget(cb)
 
-        # H 그룹
         h_box = QGroupBox("H 성분")
         h_box.setStyleSheet(
             "QGroupBox { font-size: 13px; border: 1px solid #555; "
@@ -163,7 +156,6 @@ class DetectorPanel(QWidget):
         cg_layout.addStretch()
         vl.addWidget(check_grid)
 
-        # 전체 선택 / 해제
         sel_row = QHBoxLayout()
         btn_all  = _small_btn("전체 선택")
         btn_none = _small_btn("전체 해제")
@@ -179,15 +171,15 @@ class DetectorPanel(QWidget):
         self._btn_apply = QPushButton("변경 적용")
         self._btn_apply.setFixedHeight(30)
         self._btn_apply.setStyleSheet(
-            "QPushButton { border: 1px solid #aaa; border-radius: 5px; "
+            "QPushButton { border: 1px solid #555; border-radius: 5px; "
             "background: #007acc; color: #fff; font-size: 13px; }"
             "QPushButton:hover { background: #1a8ad4; }"
         )
         self._btn_apply.clicked.connect(self._apply_edit)
         vl.addWidget(self._btn_apply)
-        vl.addStretch()
 
-        # ── 저장 경로 안내 ─────────────────────────────────
+        vl.addWidget(divider())
+
         vl.addWidget(section_label("출력 파일"))
         info = QLabel(
             "시뮬레이션 종료 후  <output_dir>/<dirname>/<name>.npz  로 저장됩니다.\n"
@@ -204,24 +196,27 @@ class DetectorPanel(QWidget):
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         return scroll_area
-    
+
+    def _list_label(self, d: DetectorConfig) -> str:
+        return f"{d.name}  [{d.axis}={d.position}]"  # index → position
+
     def _refresh_list(self):
         self._list.clear()
         for d in self._cfg_list:
-            self._list.addItem(f"{d.name}  [{d.axis}={d.index}]")
+            self._list.addItem(self._list_label(d))
         if self._cfg_list:
             self._list.setCurrentRow(0)
-    
+
     def _on_select(self, row: int):
         if row < 0 or row >= len(self._cfg_list):
             return
         d = self._cfg_list[row]
         self._name.setText(d.name)
         self._axis.setCurrentText(d.axis)
-        self._index.setValue(d.index)
+        self._position.setValue(d.position)  # index → position
         for q, cb in self._checks.items():
             cb.setChecked(q in d.quantities)
-    
+
     def _apply_edit(self):
         row = self._list.currentRow()
         if row < 0 or row >= len(self._cfg_list):
@@ -229,15 +224,15 @@ class DetectorPanel(QWidget):
         d = self._cfg_list[row]
         d.name       = self._name.text()
         d.axis       = self._axis.currentText()
-        d.index      = self._index.value()
+        d.position   = self._position.value()  # index → position
         d.quantities = [q for q, cb in self._checks.items() if cb.isChecked()]
-        self._list.currentItem().setText(f"{d.name}  [{d.axis}={d.index}]")
+        self._list.currentItem().setText(self._list_label(d))
 
     def _add_detector(self):
         n = len(self._cfg_list) + 1
         d = DetectorConfig(name=f"검광기 #{n}")
         self._cfg_list.append(d)
-        self._list.addItem(f"{d.name}  [{d.axis}={d.index}]")
+        self._list.addItem(self._list_label(d))
         self._list.setCurrentRow(len(self._cfg_list) - 1)
 
     def _del_detector(self):
@@ -262,21 +257,18 @@ class DetectorPanel(QWidget):
 
     # ── apply / load ──────────────────────────────────────
     def apply_to(self, cfg):
-        pass  # 직접 cfg_list 수정
+        if hasattr(cfg, 'detectors'):
+            cfg.detectors = self._cfg_list
 
     def load_from(self, cfg):
-        """SimConfig를 받아서 detectors 리스트를 로드"""
         if hasattr(cfg, 'detectors'):
-            # SimConfig 객체인 경우
             self._cfg_list = cfg.detectors
         else:
-            # DetectorConfig 객체인 경우 (호환성)
             self._cfg_list = [cfg]
         self._refresh_list()
 
 
-def _small_btn(text: str) -> "QPushButton":
-    from PyQt6.QtWidgets import QPushButton
+def _small_btn(text: str) -> QPushButton:
     btn = QPushButton(text)
     btn.setFixedHeight(26)
     btn.setStyleSheet(
