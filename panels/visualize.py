@@ -149,17 +149,31 @@ class VisualizePanel(QWidget):
                     # 파일명 표시
                     filename = os.path.basename(path)
                     self.label_file.setText(f"선택된 파일: {filename}")
-                    
-                    # 해당 폴더에서 metadata.npz 자동으로 로드
-                    self._load_metadata_from_folder(os.path.dirname(path))
-                
-                    
-                    # 첫 번째 필드부터 표시
-                    field_name = self.field_combo.currentText()
-                    if field_name in self.data:
-                        self.load_field(field_name)
-                    else:
-                        print(f"DEBUG: Field {field_name} not found. Available: {list(self.data.keys())}")
+
+                    # metadata 로드만 (오버레이 적용은 유효 필드 확인 후)
+                    self._load_metadata_from_folder(os.path.dirname(path), apply=False)
+
+                    # 사용 가능한 필드 목록 갱신
+                    valid_fields = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]
+                    available = [f for f in valid_fields if f in self.data]
+                    if not available:
+                        self.frames = None
+                        self.index = 0
+                        self.slider.setMaximum(0)
+                        self.label_frame.setText("0/0")
+                        self.label_file.setText(
+                            f"선택된 파일: {os.path.basename(path)}  "
+                            f"⚠ 필드 데이터 없음 (검광기 데이터 파일을 선택하세요)"
+                        )
+                        return
+
+                    self.field_combo.blockSignals(True)
+                    self.field_combo.clear()
+                    self.field_combo.addItems(available)
+                    self.field_combo.blockSignals(False)
+
+                    self._apply_overlays(self.metadata)
+                    self.load_field(available[0])
                 except Exception as e:
                     error_msg = f"오류: {str(e)}"
                     print(f"DEBUG: Exception = {error_msg}")
@@ -169,42 +183,58 @@ class VisualizePanel(QWidget):
         
         def _apply_overlays(self, meta):
                 if meta is None:
+                        self.eps_overlay.setVisible(False)
+                        self.src_marker.setVisible(False)
                         return
 
-                        # eps_Ez를 대표로 사용 (Ez 필드와 같은 격자)
+                # 파일에 내장된 축/위치 우선 사용, 없으면 metadata의 det0으로 폴백
+                if self.data and "_det_axis" in self.data and "_det_position" in self.data:
+                        det_axis = str(self.data["_det_axis"])
+                        det_index = int(self.data["_det_position"])
+                elif "det0_axis" in meta and "det0_position" in meta:
+                        det_axis = str(meta["det0_axis"])
+                        det_index = int(meta["det0_position"])
+                else:
+                        det_axis = None
+                        det_index = None
+
+                # eps 오버레이: 검광기 평면에 맞는 슬라이스
                 eps_key = next((k for k in ["eps_Ez", "eps_Ex", "eps_Ey"] if k in meta), None)
                 if eps_key:
-                        eps_vol = meta[eps_key]  # shape: (Nx, Ny, Nz-1)
-                        # 현재 선택된 축에 따라 슬라이스
-                        eps_slice = eps_vol[:, eps_vol.shape[1] // 2, :]  # y축 중간 슬라이스
-                        self.eps_overlay.setImage(eps_slice, autoLevels=True, levels=(0.0,1.0))
+                        eps_vol = meta[eps_key]
+                        if det_axis == 'x':
+                                pos = min(det_index, eps_vol.shape[0] - 1)
+                                eps_slice = eps_vol[pos, :, :]
+                        elif det_axis == 'z':
+                                pos = min(det_index, eps_vol.shape[2] - 1)
+                                eps_slice = eps_vol[:, :, pos]
+                        else:
+                                pos = min(det_index, eps_vol.shape[1] - 1) if det_index is not None else eps_vol.shape[1] // 2
+                                eps_slice = eps_vol[:, pos, :]
+                        self.eps_overlay.setImage(eps_slice, autoLevels=True)
                         self.eps_overlay.setVisible(True)
                 else:
                         self.eps_overlay.setVisible(False)
-                        
-                if "src_x" in meta and "src_y" in meta and "src_z" in meta and "det_axis" in meta and "det_index" in meta:
+
+                # 소스 마커: 검광기 평면에 투영되는 소스만 표시 (올바른 축 비교)
+                if "src_x" in meta and "src_y" in meta and "src_z" in meta and det_axis is not None:
                         src_x = meta["src_x"]
                         src_y = meta["src_y"]
                         src_z = meta["src_z"]
-                        det_axis = str(meta["det_axis"])
-                        det_index = int(meta["det_index"])
-
-                        # 광원 위치 표시
-    
                         spots = []
                         for x, y, z in zip(src_x, src_y, src_z):
-                                if det_axis == 'x' and det_index == y:
-                                        spots.append({'pos': (z, x), 'data': 1})
-                                elif det_axis == 'y' and det_index == x:
-                                        spots.append({'pos': (z, y), 'data': 1})
-                                elif det_axis == 'z' and det_index == x:
+                                if det_axis == 'x' and x == det_index:
                                         spots.append({'pos': (y, z), 'data': 1})
+                                elif det_axis == 'y' and y == det_index:
+                                        spots.append({'pos': (x, z), 'data': 1})
+                                elif det_axis == 'z' and z == det_index:
+                                        spots.append({'pos': (x, y), 'data': 1})
                         self.src_marker.setData(spots)
                         self.src_marker.setVisible(True)
                 else:
                         self.src_marker.setVisible(False)
 
-        def _load_metadata_from_folder(self, folder):
+        def _load_metadata_from_folder(self, folder, apply=True):
                 """metadata.npz 자동 로드"""
                 meta_path = os.path.join(folder, "metadata.npz")
                 if os.path.exists(meta_path):
@@ -212,7 +242,8 @@ class VisualizePanel(QWidget):
                                 meta_npz = np.load(meta_path)
                                 self.metadata = {k: meta_npz[k] for k in meta_npz.files}
                                 meta_npz.close()
-                                self._apply_overlays(self.metadata)
+                                if apply:
+                                        self._apply_overlays(self.metadata)
                         except Exception as e:
                                 print(f"DEBUG: Failed to load metadata: {str(e)}")
                                 self.metadata = None
@@ -287,16 +318,14 @@ class VisualizePanel(QWidget):
                 # NaN/Inf 제거 및 안전한 범위로 정규화
                 image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
                 
-                # 필드 값의 절대값 기반 색상화 (propagation 시각화)
-                img_abs = np.abs(image)
-                img_max = img_abs.max()
+                img_max = np.abs(image).max()
                 if img_max > 1e-10:
-                        # 민감도를 적용하여 약한 신호 증폭
-                        image = (img_abs / img_max) ** (1.0 / self.sensitivity)
+                        norm = image / img_max  # 부호 보존, [-1, 1]
+                        image = np.sign(norm) * (np.abs(norm) ** (1.0 / self.sensitivity))
                 else:
                         image = np.zeros_like(image)
-                
-                self.viewer.setImage(image, autoLevels=True)
+
+                self.viewer.setImage(image, autoLevels=False, levels=(-1.0, 1.0))
                 
                 # 색상맵 적용
                 cmap_name = self.colormap_combo.currentText()
