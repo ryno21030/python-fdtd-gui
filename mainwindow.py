@@ -202,7 +202,8 @@ class MainWindow(QMainWindow):
         if not path:
             return
         try:
-            self.config = SimConfig.from_json(path)
+            config = SimConfig.from_json(path)
+            self.config = config
         except Exception as e:
             QMessageBox.critical(self, "오류", f"설정 파일 오류:\n{e}")
             return
@@ -211,7 +212,12 @@ class MainWindow(QMainWindow):
         self._panels[2].load_from(self.config)
         self._panels[3].load_from(self.config)
         self._panels[4].load_from(self.config.pml)
-        self._panels[5].load_from(self.config.visualize)
+
+        self._panels[0].config = self.config.grid
+        self._panels[1].config = self.config
+        self._panels[2].config = self.config
+        self._panels[3].config = self.config
+        self._panels[4].config = self.config.pml
         self._statusbar.setText(f"  불러옴: {path}")
 
     # ── 실행 ─────────────────────────────────────────────
@@ -219,6 +225,10 @@ class MainWindow(QMainWindow):
         self._collect_config()
         if not self.config.output_dir:
             QMessageBox.warning(self, "경고", "출력 경로를 설정하세요.")
+            return
+        errors = self.config.validate()
+        if errors:
+            QMessageBox.warning(self, "설정 오류", "\n".join(errors))
             return
 
         dlg = QDialog(self)
@@ -230,7 +240,7 @@ class MainWindow(QMainWindow):
         vl.addWidget(info)
         te = QTextEdit()
         te.setReadOnly(True)
-        te.setPlainText(self.config.to_python())
+        te.setPlainText(self.config.correction())
         te.setStyleSheet(
             "font-family: Consolas, 'Courier New', monospace; font-size: 13px; "
             "background: #1e1e1e; color: #d4d4d4; border: 1px solid #3c3c3c;"
