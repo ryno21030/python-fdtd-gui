@@ -18,29 +18,6 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## 디렉토리 구조
-
-```
-fdtd_gui/
-├── main.py              # 메인 진입점
-├── mainwindow.py        # GUI 메인 윈도우
-├── config.py            # 설정 데이터 클래스
-├── runner.py            # 시뮬레이션 엔진
-├── theme.py             # UI 테마
-├── panels/              # GUI 패널들
-│   ├── __init__.py
-│   ├── _base.py         # 공통 위젯
-│   ├── grid.py          # 격자 설정
-│   ├── source.py        # 광원 설정
-│   ├── material.py      # 재질 설정
-│   ├── detector.py      # 검광기 설정
-│   ├── pml.py           # PML 경계 설정
-│   └── visualize.py     # 결과 시각화
-├── saves/               # 시뮬레이션 결과 저장 폴더 (자동 생성)
-├── requirements.txt     # 파이썬 의존성
-└── README.md            # 이 파일
-```
-
 ## 사용 방법
 
 1. **설정**: 각 탭에서 시뮬레이션 파라미터 입력
