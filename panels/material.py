@@ -256,7 +256,7 @@ class MaterialPanel(QWidget):
         n = len(self._cfg.materials) + 1
         m = MaterialConfig(name=f"구조 #{n}")
         self._cfg.materials.append(m)
-        self._list.addItem(f"{m.name}  [{m.shape}  n={m.n}]")
+        self._list.addItem(f"{m.name}  [{m.shape}  n={m.auto_n()}]")
         self._list.setCurrentRow(len(self._cfg.materials) - 1)
 
     def _del_mat(self):
