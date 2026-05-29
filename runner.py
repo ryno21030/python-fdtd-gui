@@ -100,17 +100,31 @@ class SimRunner(QThread):
         return s
 
     def _build_detectors(self, cfg) -> Detectors:
+        seen = set()
+        axis_max = {
+            'x': self.grid.Nx - 2,
+            'y': self.grid.Ny - 2,
+            'z': self.grid.Nz - 2,
+        }
         d = Detectors()
         for det in cfg.detectors:
+            if det.name in seen:
+                raise ValueError(f"중복된 검광기 이름: '{det.name}'")
+            seen.add(det.name)
             if det.type == "plane":
+                max_pos = axis_max.get(det.axis, 0)
+                if not (0 <= det.position <= max_pos):
+                    raise ValueError(
+                        f"검광기 '{det.name}'의 position {det.position}이 "
+                        f"범위를 벗어남 (0~{max_pos})"
+                    )
                 d.add_plane_detector(
-                    name = det.name,
+                    name=det.name,
                     axis=det.axis,
                     position=det.position,
                     record_type=det.quantities,
                 )
             elif det.type == "point":
-                # TODO: detectors.py에 add_point_detector 구현 후 활성화
                 raise NotImplementedError("point 검광기는 아직 구현되지 않았습니다.")
             else:
                 raise ValueError(f"지원하지 않는 검광기 타입: {det.type}")
@@ -141,18 +155,29 @@ class SimRunner(QThread):
     def save_results(self):
         buffer = self.d.buffer
         output_dir = self._cfg.output_dir
-        dirname = f"save_{int(time.time())}"
+        dirname = f"save_{int(time.time() * 1000)}"
         path = os.path.join(output_dir, dirname)
         os.makedirs(path, exist_ok=True)
 
-        # 각 detector 저장
+        # 각 detector 저장 (기록된 데이터가 있는 경우만)
+        saved_any = False
         for detector in self.d.detectors:
             detname = detector["name"]
-            frames = os.path.join(path, f"{detname}.npz")
+            buf = buffer.get(detname, {})
+            recorded = [D for D in detector["record_type"] if buf.get(D)]
+            if not recorded:
+                continue
+            saved_any = True
             np.savez_compressed(
-                frames,
-                **{D_type: np.stack(buffer[detname][D_type]) for D_type in detector["record_type"]}
+                os.path.join(path, detname),
+                **{D: np.stack(buf[D]) for D in recorded},
+                _det_axis=detector["axis"],
+                _det_position=detector["position"],
             )
+
+        if not saved_any:
+            self.status.emit("기록된 데이터 없음 — 저장 건너뜀")
+            return
 
         # metadata 저장
         meta_dict = dict(
@@ -170,6 +195,9 @@ class SimRunner(QThread):
             cond_Ey=self.baked["cond"]["Ey"],
             cond_Ez=self.baked["cond"]["Ez"],
             n_detectors=len(self.d.detectors),
+            src_x=np.array([s.x for s in self._cfg.sources]),
+            src_y=np.array([s.y for s in self._cfg.sources]),
+            src_z=np.array([s.z for s in self._cfg.sources]),
         )
         # detector 정보 flatten해서 저장
         for i, det in enumerate(self.d.detectors):
