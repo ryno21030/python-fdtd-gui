@@ -100,7 +100,7 @@ Python 3.8 이상, PyQt6 · pyqtgraph · numpy가 필요합니다.
 
 **구조 형태**
 
-- **Box** — 직육면체 영역: x0~x1, y0~y1, z0~z1 (격자 인덱스)
+- **Box** — 직육면체 영역: x0-x1, y0-y1, z0-z1 (격자 인덱스)
 - **Sphere** — 구: 중심 (cx, cy, cz), 반지름 r
 - **AsymmetricSawtooth** — 비대칭 톱니 구조 (반딧불이 큐티클 모사):
   - z_base: 구조 시작 z 위치
