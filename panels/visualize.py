@@ -255,15 +255,26 @@ class VisualizePanel(QWidget):
                 """특정 필드 로드"""
                 if self.data is None or field_name not in self.data:
                         return
-                
+
                 self.frames = self.data[field_name]
-                self.index = 0
+
+                if len(self.frames) == 0:
+                        self.index = 0
+                        self.slider.setMinimum(0)
+                        self.slider.setMaximum(0)
+                        self.label_frame.setText("0/0")
+                        return
+
+                # 신호가 가장 큰 프레임으로 자동 이동 (벡터화)
+                best = int(np.abs(self.frames).max(axis=(1, 2)).argmax())
+
+                self.index = best
                 self.slider.blockSignals(True)
                 self.slider.setMinimum(0)
                 self.slider.setMaximum(len(self.frames) - 1)
-                self.slider.setValue(0)
+                self.slider.setValue(best)
                 self.slider.blockSignals(False)
-                self.show_frame(0)
+                self.show_frame(best)
         
         def on_field_changed(self):
                 """필드 선택 변경"""
@@ -319,7 +330,7 @@ class VisualizePanel(QWidget):
                 image = np.nan_to_num(image, nan=0.0, posinf=0.0, neginf=0.0)
                 
                 img_max = np.abs(image).max()
-                if img_max > 1e-10:
+                if img_max > 0:
                         norm = image / img_max  # 부호 보존, [-1, 1]
                         image = np.sign(norm) * (np.abs(norm) ** (1.0 / self.sensitivity))
                 else:
@@ -358,4 +369,4 @@ class VisualizePanel(QWidget):
                 pass
 
         def load_from(self, cfg: SimConfig):
-                self._cfg = cfg
+                self.config = cfg
