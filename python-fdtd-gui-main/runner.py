@@ -45,13 +45,14 @@ class SimRunner(QThread):
     def run(self):
         try:
             self._execute()
-        except Exception as e:
+        except Exception:
             import traceback
             self.error.emit(traceback.format_exc())
 
     def _build_scene(self, cfg):
-        self.grid=cfg.grid
+        self.grid = cfg.grid
         self.dt = cfg.grid.effective_dt()
+        self.grid.dt = self.dt  # engine이 grid.dt를 직접 읽으므로 확정값으로 통일
         scene = Scene(cfg.grid.Nx, cfg.grid.Ny, cfg.grid.Nz)
 
         for m in cfg.materials:

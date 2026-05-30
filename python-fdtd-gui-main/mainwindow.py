@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
             MaterialPanel(self.config),
             DetectorPanel(self.config),
             PMLPanel(self.config.pml),
-            VisualizePanel(self.config.visualize)
+            VisualizePanel(self.config)
         ]
         self._panel_titles = [
             "격자 / 시간 설정", "광원 설정", "재질 / 구조 설정",
@@ -218,11 +218,13 @@ class MainWindow(QMainWindow):
         self._panels[2].config = self.config
         self._panels[3].config = self.config
         self._panels[4].config = self.config.pml
+        self._panels[5].load_from(self.config)
         self._statusbar.setText(f"  불러옴: {path}")
 
     # ── 실행 ─────────────────────────────────────────────
     def _run_simulation(self):
         self._collect_config()
+        self.config.grid.t = 0.0   # 재실행 전 누적 t 초기화 (다이얼로그·시뮬 모두 t=0 반영)
         if not self.config.output_dir:
             QMessageBox.warning(self, "경고", "출력 경로를 설정하세요.")
             return
@@ -230,6 +232,18 @@ class MainWindow(QMainWindow):
         if errors:
             QMessageBox.warning(self, "설정 오류", "\n".join(errors))
             return
+
+        warns = self.config.warnings()
+        if warns:
+            msg = "\n\n".join(f"⚠  {w}" for w in warns)
+            reply = QMessageBox.warning(
+                self, "경고",
+                f"{msg}\n\n계속 실행하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         dlg = QDialog(self)
         dlg.setWindowTitle("시뮬레이션 설정 확인")
