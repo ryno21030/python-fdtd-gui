@@ -189,18 +189,41 @@ class SimConfig:
             errors.append("save_every는 1 이상의 정수여야 합니다.")
 
         valid_source_types = {"gaussian_pulse", "sinusoidal"}
+        # Yee 격자 각 성분의 실제 배열 크기 (shape에 맞는 최대 인덱스)
+        _src_max = {
+            "Ex": (self.grid.Nx - 2, self.grid.Ny - 1, self.grid.Nz - 1),
+            "Ey": (self.grid.Nx - 1, self.grid.Ny - 2, self.grid.Nz - 1),
+            "Ez": (self.grid.Nx - 1, self.grid.Ny - 1, self.grid.Nz - 2),
+        }
         for s in self.sources:
             if s.type not in valid_source_types:
-                errors.append(f"지원하지 않는 소스 타입: {s.type}")
-            if s.component not in ["Ex", "Ey", "Ez"]:
-                errors.append(f"지원하지 않는 소스 컴포넌트: {s.component}")
+                errors.append(f"소스 '{s.name}': 지원하지 않는 타입 '{s.type}'")
+            if s.component not in _src_max:
+                errors.append(f"소스 '{s.name}': 지원하지 않는 컴포넌트 '{s.component}'")
+            else:
+                for axis, val, amax in zip(
+                    ["x", "y", "z"], [s.x, s.y, s.z], _src_max[s.component]
+                ):
+                    if not (0 <= val <= amax):
+                        errors.append(
+                            f"소스 '{s.name}': {axis}={val} 범위 초과 "
+                            f"(0 ~ {amax}, {s.component} 성분 기준)"
+                        )
 
         valid_detector_types = {"plane", "point"}
+        _det_max = {"x": self.grid.Nx - 2, "y": self.grid.Ny - 2, "z": self.grid.Nz - 2}
         for d in self.detectors:
             if d.type not in valid_detector_types:
                 errors.append(f"지원하지 않는 검광기 타입: {d.type}")
             if d.type == "plane" and d.axis not in ["x", "y", "z"]:
                 errors.append(f"지원하지 않는 검광기 축: {d.axis}")
+            elif d.type == "plane" and d.axis in _det_max:
+                max_pos = _det_max[d.axis]
+                if not (0 <= d.position <= max_pos):
+                    errors.append(
+                        f"검광기 '{d.name}': position={d.position} 범위 초과 "
+                        f"(0 ~ {max_pos}, {d.axis}축 기준)"
+                    )
             for q in d.quantities:
                 if q not in ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]:
                     errors.append(f"지원하지 않는 검광량: {q}")
@@ -219,6 +242,33 @@ class SimConfig:
             errors.append("PML alpha_max는 음수일 수 없습니다.")
 
         return errors
+
+    def warnings(self) -> List[str]:
+        """실행은 가능하나 물리적으로 권장하지 않는 설정에 대한 경고."""
+        warns: List[str] = []
+        pml = self.pml.thickness
+        g   = self.grid
+        # PML이 그리드 절반 이상을 차지하면 내부 영역이 없으므로 경고 자체가 의미 없음
+        if 2 * pml >= min(g.Nx, g.Ny, g.Nz):
+            warns.append(
+                f"PML 두께({pml})가 그리드 크기({g.Nx}×{g.Ny}×{g.Nz}) 대비 너무 두꺼워 "
+                f"유효 시뮬레이션 영역이 없습니다."
+            )
+            return warns
+        for s in self.sources:
+            axes_in_pml = [
+                label for label, val, limit in [
+                    (f"x={s.x}", s.x, g.Nx), (f"y={s.y}", s.y, g.Ny), (f"z={s.z}", s.z, g.Nz)
+                ]
+                if val < pml or val > limit - 1 - pml
+            ]
+            if axes_in_pml:
+                warns.append(
+                    f"소스 '{s.name}' 위치({', '.join(axes_in_pml)})가 "
+                    f"PML 흡수 영역(두께 {pml}) 안에 있습니다.\n"
+                    f"  → 광원이 경계에서 흡수되어 비정상적인 결과가 생길 수 있습니다."
+                )
+        return warns
 
     # ── JSON 직렬화 ────────────────────────────────────────
     def to_json(self, path: str) -> None:
