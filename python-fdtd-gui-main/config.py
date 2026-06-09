@@ -188,7 +188,6 @@ class SimConfig:
         if self.grid.save_every <= 0:
             errors.append("save_every는 1 이상의 정수여야 합니다.")
 
-        valid_source_types = {"gaussian_pulse", "sinusoidal"}
         # Yee 격자 각 성분의 실제 배열 크기 (shape에 맞는 최대 인덱스)
         _src_max = {
             "Ex": (self.grid.Nx - 2, self.grid.Ny - 1, self.grid.Nz - 1),
@@ -196,11 +195,6 @@ class SimConfig:
             "Ez": (self.grid.Nx - 1, self.grid.Ny - 1, self.grid.Nz - 2),
         }
         for s in self.sources:
-            if s.type not in valid_source_types:
-                errors.append(f"소스 '{s.name}': 지원하지 않는 타입 '{s.type}'")
-            if s.component not in _src_max:
-                errors.append(f"소스 '{s.name}': 지원하지 않는 컴포넌트 '{s.component}'")
-            else:
                 for axis, val, amax in zip(
                     ["x", "y", "z"], [s.x, s.y, s.z], _src_max[s.component]
                 ):

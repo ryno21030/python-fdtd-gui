@@ -93,6 +93,14 @@ class SimRunner(QThread):
                     amplitude=src.amplitude,
                     component=src.component,
                 )
+            elif src.type == "gaussian_plane_wave":
+                s.add_gaussian_plane_wave(
+                    y=src.y,
+                    t0=src.t0,
+                    tau=src.tau,
+                    amplitude=src.amplitude,
+                    component=src.component,
+                )
             elif src.type == "sinusoidal":
                 # TODO: sources.py에 add_sinusoidal 구현 후 활성화
                 raise NotImplementedError("sinusoidal 소스는 아직 구현되지 않았습니다.")
@@ -112,6 +120,7 @@ class SimRunner(QThread):
             if det.name in seen:
                 raise ValueError(f"중복된 검광기 이름: '{det.name}'")
             seen.add(det.name)
+            
             if det.type == "plane":
                 max_pos = axis_max.get(det.axis, 0)
                 if not (0 <= det.position <= max_pos):
@@ -125,8 +134,20 @@ class SimRunner(QThread):
                     position=det.position,
                     record_type=det.quantities,
                 )
+
             elif det.type == "point":
-                raise NotImplementedError("point 검광기는 아직 구현되지 않았습니다.")
+                ix, iy, iz = det.x, det.y, det.z
+                if not (0 <= ix < self.grid.Nx and 0 <= iy < self.grid.Ny and 0 <= iz < self.grid.Nz):
+                    raise ValueError(
+                        f"검광기 '{det.name}'의 position ({ix},{iy},{iz})이 "
+                        f"설정한 범위를 벗어남"
+                    )
+                d.add_point_detector(
+                    name=det.name,
+                    position=(det.x, det.y, det.z),
+                    record_type=det.quantities,
+                )
+
             else:
                 raise ValueError(f"지원하지 않는 검광기 타입: {det.type}")
         return d
@@ -169,11 +190,13 @@ class SimRunner(QThread):
             if not recorded:
                 continue
             saved_any = True
+            meta = {"_det_position": detector["position"]}
+            if detector["type"] == "plane":
+                meta["_det_axis"] = detector["axis"]
             np.savez_compressed(
                 os.path.join(path, detname),
                 **{D: np.stack(buf[D]) for D in recorded},
-                _det_axis=detector["axis"],
-                _det_position=detector["position"],
+                **meta,
             )
 
         if not saved_any:
@@ -203,8 +226,9 @@ class SimRunner(QThread):
         # detector 정보 flatten해서 저장
         for i, det in enumerate(self.d.detectors):
             meta_dict[f"det{i}_name"]     = det["name"]
-            meta_dict[f"det{i}_axis"]     = det["axis"]
             meta_dict[f"det{i}_position"] = det["position"]
+            if det["type"] == "plane":
+                meta_dict[f"det{i}_axis"] = det["axis"]
 
         np.savez(os.path.join(path, "metadata.npz"), **meta_dict)
         

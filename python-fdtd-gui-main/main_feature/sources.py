@@ -37,6 +37,27 @@ class Sources:
 
                 arr[s["pos"]] += val
 
+        def add_gaussian_plane_wave(self, y, t0, tau, amplitude, component):
+                """y = const 평면 전체에 균일하게 소스를 주입하여 평면파를 생성한다."""
+                self.sources.append({
+                        "type": "gaussian_plane_wave",
+                        "y": y,
+                        "t0": t0,
+                        "tau": tau,
+                        "amplitude": amplitude,
+                        "component": component,
+                })
+
+        def gaussian_plane_wave(self, s, t, field):
+                val = (
+                        -s["amplitude"]
+                        * (t - s["t0"])
+                        / s["tau"]**2
+                        * np.exp(-((t - s["t0"]) / s["tau"])**2)
+                )
+                arr = getattr(field, s["component"])
+                arr[:, s["y"], :] += val
+
         def emit(self, field, grid):
 
                 t = grid.t

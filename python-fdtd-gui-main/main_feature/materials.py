@@ -123,9 +123,9 @@ class Scene:
                 reshaped_mu["Hz"] = 0.25 * (mu[:-1,:-1,:] + mu[1:,:-1,:]   # z면: (Nx-1, Ny-1, Nz)
                     + mu[:-1,1:,:]  + mu[1:,1:,:])
                 
-                reshaped_cond['Ex'] = 0.5 * (eps[:-1,:,:] + eps[1:,:,:])   # x엣지: (Nx-1, Ny, Nz)
-                reshaped_cond['Ey'] = 0.5 * (eps[:,:-1,:] + eps[:,1:,:])   # y엣지: (Nx, Ny-1, Nz)
-                reshaped_cond['Ez'] = 0.5 * (eps[:,:,:-1] + eps[:,:,1:])   # z엣지: (Nx, Ny, Nz-1)
+                reshaped_cond['Ex'] = 0.5 * (cond[:-1,:,:] + cond[1:,:,:])   # x엣지: (Nx-1, Ny, Nz)
+                reshaped_cond['Ey'] = 0.5 * (cond[:,:-1,:] + cond[:,1:,:])   # y엣지: (Nx, Ny-1, Nz)
+                reshaped_cond['Ez'] = 0.5 * (cond[:,:,:-1] + cond[:,:,1:])   # z엣지: (Nx, Ny, Nz-1)
 
                 Ca = {k: self.make_Ca(reshaped_cond[k], reshaped_eps[k], dt) for k in ('Ex','Ey','Ez')}
                 Cb = {k: self.make_Cb(reshaped_cond[k], reshaped_eps[k], dt) for k in ('Ex','Ey','Ez')}
