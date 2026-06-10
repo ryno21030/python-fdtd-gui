@@ -220,7 +220,7 @@ class SimConfig:
                         f"(0 ~ {max_pos}, {d.axis}축 기준)"
                     )
             for q in d.quantities:
-                if q not in ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]:
+                if q not in ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz","Sx","Sy","Sz"]:
                     errors.append(f"지원하지 않는 검광량: {q}")
 
         if self.pml.thickness < 0:

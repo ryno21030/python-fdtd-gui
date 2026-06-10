@@ -23,19 +23,10 @@ class Poynting:
                         field.Ez[:-1,:-1,:] + field.Ez[1:,:-1,:] +
                         field.Ez[:-1,1:,:] + field.Ez[1:,1:,:]
                 )
-                # H: 어긋난 두 축 방향으로 평균 → 셀 중심
-                self.reshaped_Hx = 0.25 * (
-                        field.Hx[:,:-1,:-1] + field.Hx[:,1:,:-1] +
-                        field.Hx[:,:-1,1:] + field.Hx[:,1:,1:]
-                )
-                self.reshaped_Hy = 0.25 * (
-                        field.Hy[:-1,:,:-1] + field.Hy[1:,:,:-1] +
-                        field.Hy[:-1,:,1:] + field.Hy[1:,:,1:]
-                )
-                self.reshaped_Hz = 0.25 * (
-                        field.Hz[:-1,:-1,:] + field.Hz[1:,:-1,:] +
-                        field.Hz[:-1,1:,:] + field.Hz[1:,1:,:]
-                )
+                # H: 이미 두 축이 반정수 위치 → 나머지 한 축만 평균
+                self.reshaped_Hx = 0.5 * (field.Hx[:-1, :, :] + field.Hx[1:, :, :])
+                self.reshaped_Hy = 0.5 * (field.Hy[:, :-1, :] + field.Hy[:, 1:, :])
+                self.reshaped_Hz = 0.5 * (field.Hz[:, :, :-1] + field.Hz[:, :, 1:])
 
         def compute(self, field):
                 self.reshape(field)
