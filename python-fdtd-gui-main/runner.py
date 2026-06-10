@@ -21,6 +21,7 @@ from main_feature.CPML import CPML
 from main_feature.sources import Sources
 from main_feature.engine import Engine
 from main_feature.detectors import Detectors
+from sub_feature.poynting import Poynting
 from main_feature.materials import (
     Material, Box, Sphere, AsymmetricSawtooth, Scene,
     VACUUM, COPPER, GOLD, SILICON, GLASS, WATER
@@ -165,6 +166,17 @@ class SimRunner(QThread):
         )
         self.s = self._build_sources(cfg)
         self.d = self._build_detectors(cfg)
+
+        needs_local = any(
+            q in {"Sx", "Sy", "Sz"}
+            for det in cfg.detectors
+            for q in det.quantities
+        )
+        needs_global = cfg.visualize.save_poynting
+        self.poynting = Poynting(save_global=needs_global) if (needs_local or needs_global) else None
+        if needs_local:
+            self.d.bake(self.grid.Nx, self.grid.Ny, self.grid.Nz)
+
         self.engine = Engine(
             self.f,
             self.baked,
@@ -172,6 +184,7 @@ class SimRunner(QThread):
             self.s,
             self.d,
             self.grid,
+            poynting=self.poynting,
         )
 
     def save_results(self):
@@ -231,7 +244,18 @@ class SimRunner(QThread):
                 meta_dict[f"det{i}_axis"] = det["axis"]
 
         np.savez(os.path.join(path, "metadata.npz"), **meta_dict)
-        
+
+        # 전역 Poynting 저장 (save_poynting=True 일 때만)
+        if self.poynting is not None and self.poynting.global_buffer:
+            buf = self.poynting.global_buffer
+            if buf["Sx"]:
+                np.savez_compressed(
+                    os.path.join(path, "poynting_global.npz"),
+                    Sx=np.stack(buf["Sx"]),
+                    Sy=np.stack(buf["Sy"]),
+                    Sz=np.stack(buf["Sz"]),
+                )
+
 
     def _execute(self):
         self._build_scene(self._cfg)

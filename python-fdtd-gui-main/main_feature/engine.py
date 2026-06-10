@@ -5,26 +5,31 @@ FDTD 시뮬레이터의 핵심 엔진을 구현하는 파일입니다.
 """
 class Engine:
         def __init__(self, field, scene,
-                        cpml, sources, detectors, grid):
+                        cpml, sources, detectors, grid, poynting=None):
                 self.field = field
                 self.cpml = cpml
                 self.sources = sources
                 self.detectors = detectors
                 self.grid = grid
                 self.scene = scene
+                self.poynting = poynting
 
-        def step(self,t_step):
+        def step(self, t_step):
                 self.Hupdate(self.grid.dt)
                 self.Eupdate(self.grid.dt)
                 self.inject_sources()
                 if t_step % self.grid.save_every == 0:
                         self.record_detectors()
-           
+
         def inject_sources(self):
                 self.sources.emit(self.field, self.grid)
-              
+
         def record_detectors(self):
                 self.detectors.detect(self.field)
+                if self.poynting is not None:
+                        Sx, Sy, Sz = self.poynting.compute(self.field)
+                        self.detectors.detect_poynting(Sx, Sy, Sz)
+                        self.poynting.record_global()
 
         def update_psi(self, b, psi, c, d):
                 psi *= b

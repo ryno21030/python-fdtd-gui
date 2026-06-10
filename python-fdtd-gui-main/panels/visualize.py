@@ -49,7 +49,7 @@ class VisualizePanel(QWidget):
                 field_layout = QHBoxLayout()
                 field_layout.addWidget(QLabel("필드:"))
                 self.field_combo = QComboBox()
-                self.field_combo.addItems(["Ez", "Ex", "Ey", "Hx", "Hy", "Hz"])
+                self.field_combo.addItems(["Ez", "Ex", "Ey", "Hx", "Hy", "Hz", "Sx", "Sy", "Sz"])
                 self.field_combo.currentTextChanged.connect(self.on_field_changed)
                 field_layout.addWidget(self.field_combo)
 
@@ -88,12 +88,35 @@ class VisualizePanel(QWidget):
                 self.sensitivity_label.setMaximumWidth(50)
                 sensitivity_layout.addWidget(self.sensitivity_label)
 
+                # 슬라이스 컨트롤 (3D 프레임 데이터 — 전역 Poynting 등)
+                self._slice_widget = QWidget()
+                slice_layout = QHBoxLayout(self._slice_widget)
+                slice_layout.setContentsMargins(0, 0, 0, 0)
+                slice_layout.setSpacing(6)
+                slice_layout.addWidget(QLabel("슬라이스 축:"))
+                self._slice_axis = QComboBox()
+                self._slice_axis.addItems(["x", "y", "z"])
+                self._slice_axis.currentTextChanged.connect(self._on_slice_axis_changed)
+                slice_layout.addWidget(self._slice_axis)
+                slice_layout.addWidget(QLabel("위치:"))
+                self._slice_pos = QSlider(Qt.Orientation.Horizontal)
+                self._slice_pos.setMinimum(0)
+                self._slice_pos.setMaximum(0)
+                self._slice_pos.setMaximumWidth(120)
+                self._slice_pos.valueChanged.connect(lambda _: self.show_frame(self.index))
+                slice_layout.addWidget(self._slice_pos)
+                self._slice_pos_label = QLabel("0")
+                self._slice_pos_label.setMinimumWidth(30)
+                slice_layout.addWidget(self._slice_pos_label)
+                self._slice_widget.setVisible(False)
+
                 root2 = QHBoxLayout()
                 root2.setContentsMargins(0, 0, 0, 0)
                 root2.setSpacing(20)
                 root2.addLayout(field_layout)
                 root2.addLayout(colormap_layout)
                 root2.addLayout(sensitivity_layout)
+                root2.addWidget(self._slice_widget)
                 root2.addStretch()
 
                 root.addLayout(root2)
@@ -154,7 +177,7 @@ class VisualizePanel(QWidget):
                     self._load_metadata_from_folder(os.path.dirname(path), apply=False)
 
                     # 사용 가능한 필드 목록 갱신
-                    valid_fields = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]
+                    valid_fields = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "Sx", "Sy", "Sz"]
                     available = [f for f in valid_fields if f in self.data]
                     if not available:
                         self.frames = None
@@ -265,8 +288,15 @@ class VisualizePanel(QWidget):
                         self.label_frame.setText("0/0")
                         return
 
-                # 신호가 가장 큰 프레임으로 자동 이동 (벡터화)
-                best = int(np.abs(self.frames).max(axis=(1, 2)).argmax())
+                # 3D 프레임(전역 Poynting 등): 슬라이스 컨트롤 표시
+                is_volume = self.frames.ndim == 4
+                self._slice_widget.setVisible(is_volume)
+                if is_volume:
+                        self._on_slice_axis_changed(self._slice_axis.currentText())
+
+                # 신호가 가장 큰 프레임으로 자동 이동
+                flat_frames = self.frames.reshape(len(self.frames), -1)
+                best = int(np.abs(flat_frames).max(axis=1).argmax())
 
                 self.index = best
                 self.slider.blockSignals(True)
@@ -309,18 +339,41 @@ class VisualizePanel(QWidget):
                 self.index = value
                 self.show_frame(value)
 
+        def _on_slice_axis_changed(self, axis: str):
+                """슬라이스 축 변경 시 위치 슬라이더 범위 갱신."""
+                if self.frames is None or self.frames.ndim != 4:
+                        return
+                dim_map = {"x": 1, "y": 2, "z": 3}
+                dim = self.frames.shape[dim_map[axis]]
+                mid = dim // 2
+                self._slice_pos.blockSignals(True)
+                self._slice_pos.setMaximum(dim - 1)
+                self._slice_pos.setValue(mid)
+                self._slice_pos.blockSignals(False)
+                self._slice_pos_label.setText(str(mid))
+                self.show_frame(self.index)
+
         def show_frame(self, idx):
                 """프레임 표시 - 색상맵 적용 및 민감도 적용"""
                 if self.frames is None:
                         return
-                
+
                 frame = self.frames[idx]
-                
-                # 2D 슬라이스가 필요한 경우 (3D 데이터의 경우 중간 슬라이스)
-                if frame.ndim == 2:
+
+                # 3D 프레임(전역 Poynting): 슬라이스 컨트롤 기준으로 2D 추출
+                if frame.ndim == 3:
+                        axis = self._slice_axis.currentText()
+                        pos  = self._slice_pos.value()
+                        self._slice_pos_label.setText(str(pos))
+                        if axis == "x":
+                                image = frame[pos, :, :]
+                        elif axis == "y":
+                                image = frame[:, pos, :]
+                        else:
+                                image = frame[:, :, pos]
+                elif frame.ndim == 2:
                         image = frame
                 else:
-                        # 3D 데이터는 중간 슬라이스 사용
                         image = frame[frame.shape[0] // 2]
                 
                 # float32로 변환

@@ -159,6 +159,7 @@ class VisualizeConfig:
     quantities: List[str] = field(
         default_factory=lambda: ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]
     )
+    save_poynting: bool = False
 
 
 # ── 최상위 설정 ────────────────────────────────────────────

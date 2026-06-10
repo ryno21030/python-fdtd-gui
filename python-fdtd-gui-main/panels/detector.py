@@ -14,7 +14,7 @@ from panels._base import (
     section_label, divider, spin, combo, line_edit, scrollable_panel
 )
 
-ALL_QUANTITIES = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz"]
+ALL_QUANTITIES = ["Ex", "Ey", "Ez", "Hx", "Hy", "Hz", "Sx", "Sy", "Sz"]
 
 
 class DetectorPanel(QWidget):
@@ -108,7 +108,8 @@ class DetectorPanel(QWidget):
         # ── 기록 물리량 ────────────────────────────────────
         vl.addWidget(section_label("기록할 물리량"))
 
-        hint = QLabel("시뮬레이션 루프 내에서 save_every 스텝마다 해당 면을 저장합니다.")
+        hint = QLabel("시뮬레이션 루프 내에서 save_every 스텝마다 해당 면을 저장합니다.\n"
+                      "Sx/Sy/Sz는 포인팅 벡터 성분으로, 셀 중심 보간 후 추출됩니다.")
         hint.setStyleSheet("font-size: 13px; color: #6a6a6a;")
         hint.setWordWrap(True)
         vl.addWidget(hint)
@@ -150,9 +151,26 @@ class DetectorPanel(QWidget):
             self._checks[q] = cb
             h_vl.addWidget(cb)
 
+        s_box = QGroupBox("S 성분")
+        s_box.setStyleSheet(
+            "QGroupBox { font-size: 13px; border: 1px solid #555; "
+            "border-radius: 5px; padding-top: 12px; margin-top: 4px; }"
+            "QGroupBox::title { subcontrol-origin: margin; left: 8px; }"
+        )
+        s_vl = QVBoxLayout(s_box)
+        s_vl.setSpacing(4)
+        for q in ["Sx", "Sy", "Sz"]:
+            cb = QCheckBox(q)
+            cb.setChecked(q in dummy.quantities)
+            cb.setStyleSheet("font-size: 13px;")
+            self._checks[q] = cb
+            s_vl.addWidget(cb)
+
         cg_layout.addWidget(e_box)
         cg_layout.addSpacing(12)
         cg_layout.addWidget(h_box)
+        cg_layout.addSpacing(12)
+        cg_layout.addWidget(s_box)
         cg_layout.addStretch()
         vl.addWidget(check_grid)
 
