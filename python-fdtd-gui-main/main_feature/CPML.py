@@ -63,8 +63,9 @@ class CPML:
                 for i in range(pml):
                         x = (pml - i - 0.5 * eorh) / pml  # ← 스태거 적용
                         x = max(x, 0.0)
-                        alpha[i] = alpha_max * x
-                        alpha[-1-i] = alpha_max * x
+                        # alpha는 내부 경계(x≈0)에서 최대, 외부 경계(x=1)에서 0
+                        alpha[i] = alpha_max * (1.0 - x)
+                        alpha[-1-i] = alpha_max * (1.0 - x)
                 return alpha
 
         def make_b(self, sigma, kappa, alpha):

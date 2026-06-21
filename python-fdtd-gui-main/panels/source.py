@@ -1,17 +1,29 @@
 """
 panels/source.py
 광원(light_source) 목록 관리 + 개별 편집 패널.
+타입: gaussian_pulse(점광원) | gaussian_plane_wave(면광원)
 """
 from __future__ import annotations
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
-    QPushButton, QFormLayout, QScrollArea, QFrame
+    QPushButton, QFormLayout, QScrollArea, QFrame, QStackedWidget
 )
 from PyQt6.QtCore import Qt
 from config import SimConfig, SourceConfig
 from panels._base import (
     section_label, divider, spin, dspin, combo, line_edit, xyz_row
 )
+
+_TYPES: list[str] = ["gaussian_pulse", "gaussian_plane_wave"]
+_TYPE_DISPLAY: list[str] = ["가우시안 펄스 (점광원)", "가우시안 평면파 (면광원)"]
+_TYPE_SHORT: list[str] = ["점광원", "면광원"]
+
+
+def _type_index(type_str: str) -> int:
+    try:
+        return _TYPES.index(type_str)
+    except ValueError:
+        return 0
 
 
 class SourcePanel(QWidget):
@@ -63,12 +75,10 @@ class SourcePanel(QWidget):
 
         root.addWidget(left)
 
-        # ── 오른쪽: 편집 (QScrollArea를 self에 저장) ───────
-        self._editor_sa = self._build_editor()
-        root.addWidget(self._editor_sa, stretch=1)
+        # ── 오른쪽: 편집 ──────────────────────────────────
+        root.addWidget(self._build_editor(), stretch=1)
 
     def _build_editor(self) -> QScrollArea:
-        # inner 위젯
         inner = QWidget()
         vl = QVBoxLayout(inner)
         vl.setContentsMargins(24, 20, 24, 20)
@@ -76,34 +86,39 @@ class SourcePanel(QWidget):
 
         vl.addWidget(section_label("선택된 광원 편집"))
 
-        form = QFormLayout()
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        form.setSpacing(8)
+        top_form = QFormLayout()
+        top_form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        top_form.setSpacing(8)
 
         self._name = line_edit("소스 #1")
-        form.addRow("이름", self._name)
-
-        pos_row, self._pos = xyz_row(50, 15, 50, lo=0, hi=9999, integer=True)
-        form.addRow("위치  x / y / z", pos_row)
-
+        self._type = combo(_TYPE_DISPLAY, _TYPE_DISPLAY[0])
         self._comp = combo(["Ez", "Ex", "Ey"], "Ez")
-        form.addRow("성분  (component)", self._comp)
+        self._amp  = dspin(3e-3, lo=0.0, hi=1e3,  step=1e-3, decimals=6)
+        self._tau  = dspin(8.0,  lo=0.1, hi=1e4,  step=0.5,  decimals=2)
+        self._t0   = dspin(30.0, lo=0.0, hi=1e6,  step=1.0,  decimals=1)
 
-        self._amp = dspin(3e-3, lo=0, hi=1e3, step=1e-3, decimals=6)
-        form.addRow("진폭  (amplitude)", self._amp)
+        top_form.addRow("이름",            self._name)
+        top_form.addRow("타입",            self._type)
+        top_form.addRow("성분 (component)", self._comp)
+        top_form.addRow("진폭 (amplitude)", self._amp)
+        top_form.addRow("τ  (tau)",         self._tau)
+        top_form.addRow("t0",              self._t0)
+        vl.addLayout(top_form)
 
-        self._tau = dspin(8.0, lo=0.1, hi=1e4, step=0.5, decimals=2)
-        form.addRow("τ  (tau)", self._tau)
+        vl.addWidget(divider())
+        vl.addWidget(section_label("위치 파라미터"))
 
-        self._t0  = dspin(30.0, lo=0.0, hi=1e6, step=1.0, decimals=1)
-        form.addRow("t0", self._t0)
-
-        vl.addLayout(form)
+        # 타입별 스택
+        self._pos_stack = QStackedWidget()
+        self._pos_stack.addWidget(self._build_pulse_fields())
+        self._pos_stack.addWidget(self._build_plane_fields())
+        self._type.currentIndexChanged.connect(self._pos_stack.setCurrentIndex)
+        vl.addWidget(self._pos_stack)
 
         self._btn_apply = QPushButton("변경 적용")
         self._btn_apply.setFixedHeight(30)
         self._btn_apply.setStyleSheet(
-            "QPushButton { border: 1px solid #aaa; border-radius: 5px; "
+            "QPushButton { border: none; border-radius: 5px; "
             "background: #007acc; color: #fff; font-size: 13px; }"
             "QPushButton:hover { background: #1a8ad4; }"
         )
@@ -111,18 +126,46 @@ class SourcePanel(QWidget):
         vl.addWidget(self._btn_apply)
         vl.addStretch()
 
-        # QScrollArea를 직접 생성하고 반환 (scrollable_panel 대신)
         sa = QScrollArea()
         sa.setWidgetResizable(True)
         sa.setFrameShape(QFrame.Shape.NoFrame)
         sa.setWidget(inner)
         return sa
 
+    def _build_pulse_fields(self) -> QWidget:
+        """gaussian_pulse 전용: 점 위치 x, y, z"""
+        w = QWidget()
+        fl = QFormLayout(w)
+        fl.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        fl.setSpacing(8)
+        fl.setContentsMargins(0, 0, 0, 0)
+
+        pos_row, self._pos = xyz_row(50, 15, 50, lo=0, hi=9999, integer=True)
+        fl.addRow("위치  x / y / z", pos_row)
+        return w
+
+    def _build_plane_fields(self) -> QWidget:
+        """gaussian_plane_wave 전용: 법선 축 + 슬라이스 위치"""
+        w = QWidget()
+        fl = QFormLayout(w)
+        fl.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        fl.setSpacing(8)
+        fl.setContentsMargins(0, 0, 0, 0)
+
+        self._plane_axis = combo(["x", "y", "z"], "y")
+        self._plane_pos  = spin(15, 0, 9999)
+        fl.addRow("법선 축 (axis)",     self._plane_axis)
+        fl.addRow("위치 (position)",    self._plane_pos)
+        return w
+
     # ── 목록 ──────────────────────────────────────────────
+    def _list_label(self, s: SourceConfig) -> str:
+        return f"{s.name}  [{s.component} | {_TYPE_SHORT[_type_index(s.type)]}]"
+
     def _refresh_list(self):
         self._list.clear()
         for s in self._cfg.sources:
-            self._list.addItem(f"{s.name}  [{s.component}]")
+            self._list.addItem(self._list_label(s))
         if self._cfg.sources:
             self._list.setCurrentRow(0)
 
@@ -131,31 +174,40 @@ class SourcePanel(QWidget):
             return
         s = self._cfg.sources[row]
         self._name.setText(s.name)
-        for sb, v in zip(self._pos, (s.x, s.y, s.z)):
-            sb.setValue(v)
+        self._type.setCurrentIndex(_type_index(s.type))
         self._comp.setCurrentText(s.component)
         self._amp.setValue(s.amplitude)
         self._tau.setValue(s.tau)
         self._t0.setValue(s.t0)
+        # 타입별 위치 필드
+        for sb, v in zip(self._pos, (s.x, s.y, s.z)):
+            sb.setValue(v)
+        self._plane_axis.setCurrentText(s.axis)
+        self._plane_pos.setValue(s.position)
 
     def _apply_edit(self):
         row = self._list.currentRow()
         if row < 0 or row >= len(self._cfg.sources):
             return
         s = self._cfg.sources[row]
-        s.name         = self._name.text()
-        s.x, s.y, s.z = (sb.value() for sb in self._pos)
-        s.component    = self._comp.currentText()
-        s.amplitude    = self._amp.value()
-        s.tau          = self._tau.value()
-        s.t0           = self._t0.value()
-        self._list.currentItem().setText(f"{s.name}  [{s.component}]")
+        s.name      = self._name.text()
+        s.type      = _TYPES[self._type.currentIndex()]
+        s.component = self._comp.currentText()
+        s.amplitude = self._amp.value()
+        s.tau       = self._tau.value()
+        s.t0        = self._t0.value()
+        if s.type == "gaussian_pulse":
+            s.x, s.y, s.z = (sb.value() for sb in self._pos)
+        else:
+            s.axis     = self._plane_axis.currentText()
+            s.position = self._plane_pos.value()
+        self._list.currentItem().setText(self._list_label(s))
 
     def _add_source(self):
         n = len(self._cfg.sources) + 1
         s = SourceConfig(name=f"소스 #{n}")
         self._cfg.sources.append(s)
-        self._list.addItem(f"{s.name}  [{s.component}]")
+        self._list.addItem(self._list_label(s))
         self._list.setCurrentRow(len(self._cfg.sources) - 1)
 
     def _del_source(self):

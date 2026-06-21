@@ -96,7 +96,8 @@ class SimRunner(QThread):
                 )
             elif src.type == "gaussian_plane_wave":
                 s.add_gaussian_plane_wave(
-                    y=src.y,
+                    axis=src.axis,
+                    position=src.position,
                     t0=src.t0,
                     tau=src.tau,
                     amplitude=src.amplitude,
@@ -232,9 +233,10 @@ class SimRunner(QThread):
             cond_Ey=self.baked["cond"]["Ey"],
             cond_Ez=self.baked["cond"]["Ez"],
             n_detectors=len(self.d.detectors),
-            src_x=np.array([s.x for s in self._cfg.sources]),
-            src_y=np.array([s.y for s in self._cfg.sources]),
-            src_z=np.array([s.z for s in self._cfg.sources]),
+            src_x=np.array([s.x if s.type == "gaussian_pulse" else -1 for s in self._cfg.sources]),
+            src_y=np.array([s.y if s.type == "gaussian_pulse" else
+                            (s.position if s.axis == "y" else -1) for s in self._cfg.sources]),
+            src_z=np.array([s.z if s.type == "gaussian_pulse" else -1 for s in self._cfg.sources]),
         )
         # detector 정보 flatten해서 저장
         for i, det in enumerate(self.d.detectors):

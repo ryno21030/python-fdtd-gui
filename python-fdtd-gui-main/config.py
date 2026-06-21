@@ -57,22 +57,28 @@ class SourceConfig:
     """
     지원 타입
     ─────────────────────────────────────────
-    gaussian_pulse  : 가우시안 미분 펄스
-        필수 필드: x, y, z, component, amplitude, tau, t0
+    gaussian_pulse      : 가우시안 미분 펄스 (점광원)
+        사용 필드: x, y, z, component, amplitude, tau, t0
+    gaussian_plane_wave : 가우시안 평면파 (면광원)
+        사용 필드: axis, position, component, amplitude, tau, t0
     """
     type:      str   = "gaussian_pulse"
     name:      str   = "소스 #1"
 
     # 공통
+    component: str   = "Ez"        # Ex | Ey | Ez
+    amplitude: float = 3e-3
+    tau:       float = 8.0
+    t0:        float = 30.0
+
+    # gaussian_pulse 전용 (점광원 좌표)
     x:         int   = 50
     y:         int   = 15
     z:         int   = 50
-    component: str   = "Ez"        # Ex | Ey | Ez
-    amplitude: float = 3e-3
 
-    # gaussian_pulse 전용
-    tau:       float = 8.0
-    t0:        float = 30.0
+    # gaussian_plane_wave 전용 (면광원 축 + 위치)
+    axis:      str   = "y"         # 법선 축: x | y | z
+    position:  int   = 15          # 해당 축의 격자 인덱스
 
     # sinusoidal 전용 (추후 사용)
     frequency: float = 0.0
@@ -195,14 +201,26 @@ class SimConfig:
             "Ey": (self.grid.Nx - 1, self.grid.Ny - 2, self.grid.Nz - 1),
             "Ez": (self.grid.Nx - 1, self.grid.Ny - 1, self.grid.Nz - 2),
         }
+        _plane_max = {"x": self.grid.Nx - 1, "y": self.grid.Ny - 1, "z": self.grid.Nz - 1}
         for s in self.sources:
-                for axis, val, amax in zip(
+            if s.type == "gaussian_pulse":
+                for ax, val, amax in zip(
                     ["x", "y", "z"], [s.x, s.y, s.z], _src_max[s.component]
                 ):
                     if not (0 <= val <= amax):
                         errors.append(
-                            f"소스 '{s.name}': {axis}={val} 범위 초과 "
+                            f"소스 '{s.name}': {ax}={val} 범위 초과 "
                             f"(0 ~ {amax}, {s.component} 성분 기준)"
+                        )
+            elif s.type == "gaussian_plane_wave":
+                if s.axis not in _plane_max:
+                    errors.append(f"소스 '{s.name}': 지원하지 않는 축 '{s.axis}'")
+                else:
+                    amax = _plane_max[s.axis]
+                    if not (0 <= s.position <= amax):
+                        errors.append(
+                            f"소스 '{s.name}': position={s.position} 범위 초과 "
+                            f"(0 ~ {amax}, {s.axis}축 기준)"
                         )
 
         valid_detector_types = {"plane", "point"}
@@ -314,11 +332,16 @@ class SimConfig:
         if self.sources:
             lines.append("    sources=[")
             for s in self.sources:
-                lines.append(
-                    f"        SourceConfig(type=\"{s.type}\", name=\"{s.name}\", "
-                    f"x={s.x}, y={s.y}, z={s.z}, component=\"{s.component}\", "
-                    f"amplitude={s.amplitude}, tau={s.tau}, t0={s.t0}),"
+                common = (
+                    f"type=\"{s.type}\", name=\"{s.name}\", "
+                    f"component=\"{s.component}\", amplitude={s.amplitude}, "
+                    f"tau={s.tau}, t0={s.t0}"
                 )
+                if s.type == "gaussian_pulse":
+                    pos = f"x={s.x}, y={s.y}, z={s.z}"
+                else:
+                    pos = f"axis=\"{s.axis}\", position={s.position}"
+                lines.append(f"        SourceConfig({common}, {pos}),")
             lines.append("    ],")
         else:
             lines.append("    sources=[],")
