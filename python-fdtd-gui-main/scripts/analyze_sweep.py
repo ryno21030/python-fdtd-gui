@@ -1,7 +1,7 @@
 """
 analyze_sweep.py
-스윕 결과를 불러와 2차 다항식 RSM 회귀분석 후 최적 파라미터를 출력하고
-등고선 플롯을 생성한다.
+스윕 + iterative 결과를 통합하여 가우시안 프로세스(GP) 서로게이트를 적합하고
+최적 파라미터를 출력하며 등고선/OFAT 플롯을 생성한다.
 
 사용:
   python scripts/analyze_sweep.py               # clip 방법 (기본)
@@ -16,8 +16,8 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
 _SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_SCRIPTS_DIR)
@@ -35,23 +35,27 @@ plt.rcParams['font.family'] = 'Malgun Gothic'
 ap = argparse.ArgumentParser()
 ap.add_argument("--method", choices=["raw", "z-only", "clip"], default="clip",
                 help="추출율 계산 방법 (기본: clip)")
+ap.add_argument("--exp", default="ex", help="실험 네임스페이스 (기본: ex)")
 args, _ = ap.parse_known_args()
 METHOD = args.method
+EXP    = args.exp
 
 # ── 설정 ────────────────────────────────────────────────────
-_CORRECTED_JSON = os.path.join(_ROOT, "saves", "sweep_results_corrected.json")
-_RAW_JSON       = os.path.join(_ROOT, "saves", "sweep_results.json")
+_CORRECTED_JSON = os.path.join(_ROOT, "saves", EXP, "sweep_results_corrected.json")
+_RAW_JSON       = os.path.join(_ROOT, "saves", EXP, "sweep_results.json")
 RESULTS_JSON    = _CORRECTED_JSON if (METHOD != "raw" and os.path.exists(_CORRECTED_JSON)) else _RAW_JSON
-PLOTS_DIR       = os.path.join(_ROOT, "saves", "sweep_plots")
+PLOTS_DIR       = os.path.join(_ROOT, "saves", EXP, "sweep_plots")
 
 # 방법별 평판형 기준 추출율 (recalc_efficiency.py 로 사전 계산한 값)
 ETA_FLAT_MAP = {
-    "raw":    0.01011,
-    "z-only": 0.04137,
-    "clip":   0.02184,
+    "raw":    0.037694,
+    "z-only": 0.142176,
+    "clip":   0.082407,
 }
 ETA_FLAT = ETA_FLAT_MAP[METHOD]
 ETA_KEY  = {"raw": "eta_raw", "z-only": "eta_z", "clip": "eta_clip"}[METHOD]
+
+_ITER_JSON = os.path.join(_ROOT, "saves", EXP, "iterative_results.json")
 
 print(f"[analyze_sweep] method={METHOD}  결과파일={os.path.basename(RESULTS_JSON)}")
 
@@ -59,6 +63,20 @@ print(f"[analyze_sweep] method={METHOD}  결과파일={os.path.basename(RESULTS_
 # ── 결과 로드 및 효율 계산 ───────────────────────────────────
 with open(RESULTS_JSON) as f:
     records = json.load(f)
+
+if os.path.exists(_ITER_JSON):
+    with open(_ITER_JSON) as f:
+        iter_records = json.load(f)
+    existing_keys = {(r["period"], r["height"], r["duty"]) for r in records}
+    added = 0
+    for r in iter_records:
+        key = (r["period"], r["height"], r["duty"])
+        if key not in existing_keys and r.get("folder") and r.get(ETA_KEY) and np.isfinite(r[ETA_KEY]):
+            records.append(r)
+            existing_keys.add(key)
+            added += 1
+    if added:
+        print(f"  + iterative 결과 {added}개 병합 (총 {len(records)}개)")
 
 X_raw, y = [], []
 for rec in records:
@@ -85,37 +103,47 @@ y     = np.array(y,     dtype=float)
 print(f"\n유효 데이터 수: {len(y)}")
 
 
-# ── 2차 다항식 RSM 적합 ──────────────────────────────────────
-poly  = PolynomialFeatures(degree=2, include_bias=True)
-X_fit = poly.fit_transform(X_raw)
-model = LinearRegression(fit_intercept=False)
-model.fit(X_fit, y)
-y_pred = model.predict(X_fit)
-r2   = model.score(X_fit, y)
+# ── GP 정규화 ────────────────────────────────────────────────
+P_MIN, P_MAX = 15, 38   # 활성영역 76셀 기준 최소 2주기 (76/38=2.0)
+H_MIN, H_MAX = 8,  26   # air_extraction 검출기(z=118) - z_base(90) - 2셀 여유
+D_MIN, D_MAX = 0.30, 0.90
+_OFFSET = np.array([P_MIN, H_MIN, D_MIN], dtype=float)
+_SCALE  = np.array([P_MAX - P_MIN, H_MAX - H_MIN, D_MAX - D_MIN], dtype=float)
+
+def _norm(X): return (X - _OFFSET) / _SCALE
+
+# ── GP 적합 ──────────────────────────────────────────────────
+kernel = RBF(length_scale=1.0, length_scale_bounds=(1e-2, 10.0)) \
+       + WhiteKernel(noise_level=1e-4, noise_level_bounds=(1e-8, 1e-1))
+gp = GaussianProcessRegressor(kernel=kernel, normalize_y=True,
+                               n_restarts_optimizer=10, random_state=42)
+gp.fit(_norm(X_raw), y)
+
+y_pred = gp.predict(_norm(X_raw))
+r2   = 1.0 - np.sum((y - y_pred)**2) / np.sum((y - y.mean())**2)
 rmse = np.sqrt(np.mean((y - y_pred)**2))
-print(f"\nRSM 적합 결과: R²={r2:.4f}  RMSE={rmse*100:.4f}%")
-print("회귀 계수 (feature, coef):")
-for name, coef in zip(poly.get_feature_names_out(["period","height","duty"]), model.coef_):
-    if abs(coef) > 1e-8:
-        print(f"  {name:25s} {coef*100:+.4f}%")
+print(f"\nGP 적합 결과: R²={r2:.4f}  RMSE={rmse*100:.4f}%")
+print(f"커널: {gp.kernel_}")
 
 
 # ── 그리드 탐색으로 최적 파라미터 찾기 ──────────────────────
-p_range = np.linspace(X_raw[:,0].min(), X_raw[:,0].max(), 300)
-h_range = np.linspace(X_raw[:,1].min(), X_raw[:,1].max(), 300)
-d_range = np.linspace(X_raw[:,2].min(), X_raw[:,2].max(), 300)
+p_range = np.linspace(P_MIN, P_MAX, 300)
+h_range = np.linspace(H_MIN, H_MAX, 300)
+d_range = np.linspace(D_MIN, D_MAX, 300)
 
-best_eta = -1
-best_params = None
-for p in np.linspace(X_raw[:,0].min()-5, X_raw[:,0].max()+5, 60):
-    for h in np.linspace(X_raw[:,1].min()-2, X_raw[:,1].max()+2, 60):
-        for d in np.linspace(0.3, 0.95, 30):
-            pred = model.predict(poly.transform([[p, h, d]]))[0]
-            if pred > best_eta:
-                best_eta    = pred
-                best_params = (p, h, d)
+pp, hh, dd = np.meshgrid(
+    np.linspace(P_MIN, P_MAX, 60),
+    np.linspace(H_MIN, H_MAX, 60),
+    np.linspace(D_MIN, D_MAX, 30),
+    indexing="ij",
+)
+grid_pts = np.column_stack([pp.ravel(), hh.ravel(), dd.ravel()])
+preds = gp.predict(_norm(grid_pts))
+best_idx = np.argmax(preds)
+best_eta = preds[best_idx]
+best_params = tuple(grid_pts[best_idx])
 
-print(f"\n최적 파라미터 (RSM 예측):")
+print(f"\n최적 파라미터 (GP 예측):")
 print(f"  period = {best_params[0]:.1f} cells  ({best_params[0]*10:.0f} nm)")
 print(f"  height = {best_params[1]:.1f} cells  ({best_params[1]*10:.0f} nm)")
 print(f"  duty   = {best_params[2]:.3f}")
@@ -134,7 +162,7 @@ def predict_grid(ax_x, ax_y, fixed_idx, fixed_val):
     a, b = [i for i in range(3) if i != fixed_idx]
     pts[:, a] = xg.ravel()
     pts[:, b] = yg.ravel()
-    Z = model.predict(poly.transform(pts)).reshape(xg.shape) * 100
+    Z = gp.predict(_norm(pts)).reshape(xg.shape) * 100
     return xg, yg, Z
 
 
@@ -176,11 +204,11 @@ axes[2].set_title(f"period = {p_opt:.1f} 고정", fontsize=11)
 plt.colorbar(cf, ax=axes[2], label="η (%)")
 
 fig.suptitle(
-    f"OLED 광 추출율 응답면 (RSM)  |  R²={r2:.3f}  |  최적 η={best_eta*100:.3f}%",
+    f"OLED 광 추출율 응답면 (GP)  |  R²={r2:.3f}  |  최적 η={best_eta*100:.3f}%",
     fontsize=13, y=1.02
 )
 plt.tight_layout()
-out_path = os.path.join(PLOTS_DIR, "rsm_contours.png")
+out_path = os.path.join(PLOTS_DIR, "gp_contours.png")
 plt.savefig(out_path, dpi=150, bbox_inches="tight")
 print(f"\n등고선 플롯 저장: {out_path}")
 
@@ -197,7 +225,7 @@ for ax, i, label, rng in zip(axes2, range(3), param_labels, param_ranges):
         pt = list(opt_vals)
         pt[i] = v
         pts_list.append(pt)
-    etas = model.predict(poly.transform(np.array(pts_list))) * 100
+    etas = gp.predict(_norm(np.array(pts_list))) * 100
 
     ax.plot(rng, etas, "b-", lw=2)
     ax.axvline(opt_vals[i], color="red", ls="--", lw=1.5, label="최적값")

@@ -17,19 +17,20 @@ class CPML:
                 self.psi = {}
                 self.coeff = {}
 
-                self.psi["Ex_y"] = np.zeros((Nx-1, Ny-2, Nz  ))
-                self.psi["Ex_z"] = np.zeros((Nx-1, Ny,   Nz-2))
-                self.psi["Ey_x"] = np.zeros((Nx-2, Ny-1, Nz  ))
-                self.psi["Ey_z"] = np.zeros((Nx,   Ny-1, Nz-2))
-                self.psi["Ez_x"] = np.zeros((Nx-2, Ny,   Nz-1))
-                self.psi["Ez_y"] = np.zeros((Nx,   Ny-2, Nz-1))
+                f32 = np.float32
+                self.psi["Ex_y"] = np.zeros((Nx-1, Ny-2, Nz  ), dtype=f32)
+                self.psi["Ex_z"] = np.zeros((Nx-1, Ny,   Nz-2), dtype=f32)
+                self.psi["Ey_x"] = np.zeros((Nx-2, Ny-1, Nz  ), dtype=f32)
+                self.psi["Ey_z"] = np.zeros((Nx,   Ny-1, Nz-2), dtype=f32)
+                self.psi["Ez_x"] = np.zeros((Nx-2, Ny,   Nz-1), dtype=f32)
+                self.psi["Ez_y"] = np.zeros((Nx,   Ny-2, Nz-1), dtype=f32)
 
-                self.psi["Hx_y"] = np.zeros((Nx,   Ny-1, Nz-1))
-                self.psi["Hx_z"] = np.zeros((Nx,   Ny-1, Nz-1))
-                self.psi["Hy_x"] = np.zeros((Nx-1, Ny,   Nz-1))
-                self.psi["Hy_z"] = np.zeros((Nx-1, Ny,   Nz-1))
-                self.psi["Hz_x"] = np.zeros((Nx-1, Ny-1, Nz  ))
-                self.psi["Hz_y"] = np.zeros((Nx-1, Ny-1, Nz  ))
+                self.psi["Hx_y"] = np.zeros((Nx,   Ny-1, Nz-1), dtype=f32)
+                self.psi["Hx_z"] = np.zeros((Nx,   Ny-1, Nz-1), dtype=f32)
+                self.psi["Hy_x"] = np.zeros((Nx-1, Ny,   Nz-1), dtype=f32)
+                self.psi["Hy_z"] = np.zeros((Nx-1, Ny,   Nz-1), dtype=f32)
+                self.psi["Hz_x"] = np.zeros((Nx-1, Ny-1, Nz  ), dtype=f32)
+                self.psi["Hz_y"] = np.zeros((Nx-1, Ny-1, Nz  ), dtype=f32)
 
                 self.build_coeff(grid)
 
@@ -37,7 +38,7 @@ class CPML:
                 pml = self.pml_thick
                 sigma_max = self.sigma_max
                 m = self.m
-                sigma = np.zeros(N)
+                sigma = np.zeros(N, dtype=np.float32)
                 for i in range(pml):
                         x = (pml - i - 0.5 * eorh) / pml
                         sigma[i] = sigma_max * x**m
@@ -48,7 +49,7 @@ class CPML:
                 pml = self.pml_thick
                 kappa_max = self.kappa_max
                 m = self.m
-                kappa = np.ones(N)
+                kappa = np.ones(N, dtype=np.float32)
                 for i in range(pml):
                         x = (pml - i - 0.5 * eorh) / pml  # ← 스태거 적용
                         x = max(x, 0.0)
@@ -59,7 +60,7 @@ class CPML:
         def make_alpha(self, N, eorh=0):  # ← eorh 추가
                 pml = self.pml_thick
                 alpha_max = self.alpha_max
-                alpha = np.zeros(N)
+                alpha = np.zeros(N, dtype=np.float32)
                 for i in range(pml):
                         x = (pml - i - 0.5 * eorh) / pml  # ← 스태거 적용
                         x = max(x, 0.0)

@@ -24,12 +24,18 @@ PERIODS = [15, 25, 35]      # 톱니 주기 (셀)  — 150 / 250 / 350 nm
 HEIGHTS = [8,  15, 22]      # 톱니 높이 (셀)  — 80  / 150 / 220 nm
 DUTIES  = [0.5, 0.65, 0.8]  # 비대칭 비율
 
-N_WORKERS = 1               # 동시 실행 수 (RAM 부족으로 1로 제한)
+N_WORKERS = 2               # 동시 실행 수 (RAM 부족으로 1로 제한)
+
+import argparse
+_ap = argparse.ArgumentParser()
+_ap.add_argument("--exp", default="ex", help="실험 네임스페이스 (기본: ex)")
+_args, _ = _ap.parse_known_args()
+EXP = _args.exp
 
 # ── 경로 ────────────────────────────────────────────────────
 TEMPLATE     = os.path.join(_ROOT, "saves", "oled_sawtooth.json")
-CONFIGS_DIR  = os.path.join(_ROOT, "saves", "sweep_configs")
-RESULTS_JSON = os.path.join(_ROOT, "saves", "sweep_results.json")
+CONFIGS_DIR  = os.path.join(_ROOT, "saves", EXP, "sweep_configs")
+RESULTS_JSON = os.path.join(_ROOT, "saves", EXP, "sweep_results.json")
 _WORKER      = os.path.join(_SCRIPTS_DIR, "sweep_worker.py")
 
 
@@ -45,7 +51,7 @@ def make_config(period: int, height: int, duty: float) -> str:
             m["duty"]   = duty
 
     tag = f"p{period}_h{height}_d{str(duty).replace('.','')}"
-    sweep_out = os.path.join(_ROOT, "saves", "sweep", tag)
+    sweep_out = os.path.join(_ROOT, "saves", EXP, "sweep", tag)
     os.makedirs(sweep_out, exist_ok=True)
     cfg["output_dir"] = sweep_out
 
@@ -94,16 +100,19 @@ def run_one(period, height, duty, cfg_path) -> dict:
 def main():
     combos = list(itertools.product(PERIODS, HEIGHTS, DUTIES))
     total  = len(combos)
-    print(f"파라미터 조합: {total}개  (병렬 {N_WORKERS}개씩)")
+    print(f"[exp={EXP}] 파라미터 조합: {total}개  (병렬 {N_WORKERS}개씩)")
     print(f"예상 시간: {total * 25 / N_WORKERS / 60:.1f}시간\n")
 
     existing = {}
     if os.path.exists(RESULTS_JSON):
         with open(RESULTS_JSON) as f:
-            for rec in json.load(f):
-                if rec.get("folder"):
-                    key = (rec["period"], rec["height"], rec["duty"])
-                    existing[key] = rec
+            try:
+                for rec in json.load(f):
+                    if rec.get("folder"):
+                        key = (rec["period"], rec["height"], rec["duty"])
+                        existing[key] = rec
+            except json.JSONDecodeError:
+                pass
 
     todo = [c for c in combos if c not in existing]
     print(f"이미 완료: {total - len(todo)}개  남은 작업: {len(todo)}개\n")

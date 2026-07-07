@@ -74,13 +74,14 @@ class SimRunner(QThread):
 
     def _build_field(self):
         g = self.grid
+        f32 = np.float32
         return Field(
-            Ex=np.zeros((g.Nx-1, g.Ny,   g.Nz)),
-            Ey=np.zeros((g.Nx,   g.Ny-1, g.Nz)),
-            Ez=np.zeros((g.Nx,   g.Ny,   g.Nz-1)),
-            Hx=np.zeros((g.Nx,   g.Ny-1, g.Nz-1)),
-            Hy=np.zeros((g.Nx-1, g.Ny,   g.Nz-1)),
-            Hz=np.zeros((g.Nx-1, g.Ny-1, g.Nz)),
+            Ex=np.zeros((g.Nx-1, g.Ny,   g.Nz),   dtype=f32),
+            Ey=np.zeros((g.Nx,   g.Ny-1, g.Nz),   dtype=f32),
+            Ez=np.zeros((g.Nx,   g.Ny,   g.Nz-1), dtype=f32),
+            Hx=np.zeros((g.Nx,   g.Ny-1, g.Nz-1), dtype=f32),
+            Hy=np.zeros((g.Nx-1, g.Ny,   g.Nz-1), dtype=f32),
+            Hz=np.zeros((g.Nx-1, g.Ny-1, g.Nz),   dtype=f32),
         )
 
     def _build_sources(self, cfg) -> Sources:

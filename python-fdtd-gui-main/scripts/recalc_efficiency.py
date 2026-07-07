@@ -50,10 +50,13 @@ EXT_SPEC = {"name": "air_extraction", "component": "Sz", "sign": +1}
 # ── 내부 유틸 ──────────────────────────────────────────────────
 def _load(folder, name):
     path = os.path.join(folder, f"{name}.npz")
-    f = np.load(path)
-    d = {k: f[k] for k in f.files}
-    f.close()
-    return d
+    try:
+        f = np.load(path)
+        d = {k: f[k] for k in f.files}
+        f.close()
+        return d
+    except Exception as e:
+        raise FileNotFoundError(f"NPZ 손상 또는 없음: {path} ({e})")
 
 
 def _flux_raw(folder, face, dx, dy, dz):
@@ -116,7 +119,13 @@ def compute_corrected(folder, source_box, ext_spec, dx=1.0, dy=1.0, dz=1.0):
 
 # ── 단독 실행 ──────────────────────────────────────────────────
 if __name__ == "__main__":
-    RESULTS_JSON = os.path.join(_ROOT, "saves", "sweep_results.json")
+    import argparse
+    _ap = argparse.ArgumentParser()
+    _ap.add_argument("--exp", default="ex", help="실험 네임스페이스 (기본: ex)")
+    _args, _ = _ap.parse_known_args()
+    EXP = _args.exp
+
+    RESULTS_JSON = os.path.join(_ROOT, "saves", EXP, "sweep_results.json")
 
     with open(RESULTS_JSON) as f:
         records = json.load(f)
@@ -144,7 +153,7 @@ if __name__ == "__main__":
             f"clip={r['eta_clip']*100:.3f}%"
         )
 
-    out_path = os.path.join(_ROOT, "saves", "sweep_results_corrected.json")
+    out_path = os.path.join(_ROOT, "saves", EXP, "sweep_results_corrected.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=2, ensure_ascii=False)
     print(f"\n보정 결과 저장: {out_path}")

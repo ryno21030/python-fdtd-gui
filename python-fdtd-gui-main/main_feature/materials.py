@@ -100,9 +100,9 @@ class Scene:
                 reshaped_mu   = {}
                 reshaped_cond = {}
 
-                eps= np.ones((self.Nx, self.Ny, self.Nz)) * self.eps0
-                mu= np.ones((self.Nx, self.Ny, self.Nz)) * self.mu0
-                cond = np.zeros((self.Nx, self.Ny, self.Nz))
+                eps  = np.ones ((self.Nx, self.Ny, self.Nz), dtype=np.float32) * self.eps0
+                mu   = np.ones ((self.Nx, self.Ny, self.Nz), dtype=np.float32) * self.mu0
+                cond = np.zeros((self.Nx, self.Ny, self.Nz), dtype=np.float32)
 
                 for shape, mat in self.objects:
                         mask = shape.mask(grid_shape)
